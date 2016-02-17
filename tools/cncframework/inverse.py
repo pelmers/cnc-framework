@@ -5,6 +5,7 @@ from sympy.core import sympify
 
 import cncframework.events.actions as actions
 
+
 def tag_expr(tag, out_var):
     """Return out_var = tag as a SymPy expression."""
     # since sympify will automatically equate to zero, we convert it to:
@@ -65,15 +66,12 @@ def find_step_inverses(stepFunction):
     return outputs
 
 
-def find_blame_candidates(arg_blame, graph_data):
+def find_blame_candidates(coll_name, coll_tag, graph_data):
     """
     Given arg_blame in format coll@tag and graph_data from specfile, find the
     possible steps@tag that could be responsible for putting or prescribing
     arg_blame.
     """
-    coll_name, coll_tag = arg_blame.split("@")
-    # turn coll_tag into a tuple representing a point in tagspace
-    coll_tag = tuple(coll_tag.split(","))
     # turn coll_tag into dict of substitutions tk: coll_tag[k]
     coll_tag_system = {
         Symbol("t{}".format(i + 1)): v for i, v in enumerate(coll_tag)}

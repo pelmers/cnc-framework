@@ -8,6 +8,7 @@ from cncframework import graph, parser
 from cncframework.events.eventgraph import EventGraph
 from cncframework.inverse import find_step_inverses, find_blame_candidates, blame_deadlocks
 
+
 def pprint_inverses(graphData):
     for (step, func) in graphData.stepFunctions.iteritems():
         print "Step {}:".format(step)
@@ -40,7 +41,10 @@ def main():
         return pprint_inverses(graphData)
     if args.blame:
         print "Steps that could be blamed for {}:".format(args.blame)
-        pprint(find_blame_candidates(args.blame, graphData, event_graph))
+        coll_name, coll_tag = arg_blame.split("@")
+        # turn coll_tag into a tuple representing a point in tagspace
+        coll_tag = tuple(coll_tag.split(","))
+        pprint(find_blame_candidates(coll_name, coll_tag, graphData, event_graph))
     else:
         # user gives us log without blame, do an "auto-blame"
         # i.e. we perform a blame on the set of all items with a get without a
