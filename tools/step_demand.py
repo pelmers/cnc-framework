@@ -49,7 +49,7 @@ def subs_ctx(ctx, key):
 def step_io_functions(stepFunction, io):
     """
     Given a StepFunction,
-    return sympification of its io item and step expressions, io ∈ {input, output}.
+    return sympification of its io item and step expressions, io ∈ {inputs, outputs}.
     """
     # TODO: ranged function should be okay
     assert io in {'inputs', 'outputs'}
@@ -93,36 +93,35 @@ def main():
                for output_item in graphData.initFunction.outputItems
                if output_item.kind == "ITEM"}
 
-    def tuple_to_dict(coll, tag):
-        # Convert a tag tuple of values to a tag dictionary to map keys -> values
-        if coll in graphData.stepFunctions:
-            return dict(zip(graphData.stepFunctions[coll].tag, tag))
-        else:
-            return dict(zip(graphData.itemDeclarations[coll].key, tag))
-
-    def dict_to_tuple(coll, tag):
-        # Undo the other function
-        if coll in graphData.stepFunctions:
-            return tuple(tag[t] for t in graphData.stepFunctions[coll].tag)
-        elif coll in graphData.itemDeclarations:
-            return tuple(tag[t] for t in graphData.itemDeclarations[coll].key)
-        else:
-            return ()
-
     def satisfy(stepOrItem, tag):
         # If it's a step, then add it to the run set and BFS satisfy on its products until demand is empty.
         # If it's an item, then add it to the compute set.
-        all_steps = {graphData.initFunction.collName,
-                     graphData.finalizeFunction.collName}.union(graphData.stepFunctions)
+        def tuple_to_dict(coll, tag):
+            # Convert a tag tuple of values to a tag dictionary to map keys -> values
+            if coll in graphData.stepFunctions:
+                return dict(zip(graphData.stepFunctions[coll].tag, tag))
+            else:
+                return dict(zip(graphData.itemDeclarations[coll].key, tag))
+
+        def dict_to_tuple(coll, tag):
+            # Undo the other function
+            if coll in graphData.stepFunctions:
+                return tuple(tag[t] for t in graphData.stepFunctions[coll].tag)
+            elif coll in graphData.itemDeclarations:
+                return tuple(tag[t] for t in graphData.itemDeclarations[coll].key)
+            else:
+                return ()
+
+        all_steps = {graphData.initFunction.collName: graphData.initFunction,
+                     graphData.finalizeFunction.collName: graphData.finalizeFunction}
+        all_steps.update(graphData.stepFunctions)
         que = deque([(stepOrItem, tag)])
         while len(que) != 0 and len(demand) != 0:
             stepOrItem, tag = que.popleft()
             tag_tuple = dict_to_tuple(stepOrItem, tag)
             if stepOrItem in all_steps:
                 run.add((stepOrItem, tag_tuple))
-                data = (graphData.stepFunctions[stepOrItem] if stepOrItem in graphData.stepFunctions
-                        else graphData.initFunction if stepOrItem == graphData.initFunction.collName
-                        else graphData.finalizeFunction)
+                data = all_steps[stepOrItem]
                 outputs = step_io_functions(data, 'outputs')
                 for coll, tag_exprses in outputs.items():
                     for tag_exprs in tag_exprses:
@@ -131,12 +130,12 @@ def main():
             else:
                 # It's an item, add to compute set and remove from demand set.
                 coll_tag = (stepOrItem, tag_tuple)
-                print coll_tag
                 compute.add(coll_tag)
                 demand.discard(coll_tag)
 
     satisfy(graphData.initFunction.collName, {})
     while len(demand) > 0:
+        # Arbitrarily pick an element from the demand set.
         for item in demand:
             break
         coll, tag = item
@@ -144,6 +143,7 @@ def main():
         if len(candidates) > 1:
             print "Ambiguous resolution for {}@{}:".format(coll, tag)
             pprint(candidates)
+            # TODO: auto-resolve?
             step = raw_input("Can you help? ")
             step_tag = candidates[step]
         elif len(candidates) < 1:
@@ -152,11 +152,13 @@ def main():
         else:
             step, step_tag = candidates.items()[0]
         satisfy(step, step_tag)
-        # Add the inputs of the prescribed set to the demand set.
+        # Add the uncomputed inputs of the prescribed set to the demand set.
         for coll, in_exprses in step_io_functions(graphData.stepFunctions[step], 'inputs').items():
             for in_exprs in in_exprses:
                 evaluated = tuple(expr.subs(step_tag) for expr in in_exprs)
-                demand.add((coll, evaluated))
+                evaluated_tuple = (coll, evaluated)
+                if evaluated_tuple not in compute:
+                    demand.add(evaluated_tuple)
 
     pprint(("Compute", compute))
     pprint(("Run", run))
