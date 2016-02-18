@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 import os
 import re
@@ -6,7 +7,7 @@ from collections import deque
 from itertools import chain
 from argparse import ArgumentParser
 from pprint import pprint
-from sympy import sympify
+from sympy import sympify, Piecewise
 
 from cncframework import graph, parser
 import cncframework.events.actions as actions
@@ -45,50 +46,29 @@ def subs_ctx(ctx, key):
 
 
 # TODO: cache this
-def step_input_functions(stepFunction):
+def step_io_functions(stepFunction, io):
     """
     Given a StepFunction,
-    return sympification of its input item and step expressions.
+    return sympification of its io item and step expressions, io ∈ {input, output}.
     """
     # TODO: ranged function should be okay
-    inpts = {}
-    for inpt in stepFunction.inputs:
-        if inpt.kind in {"STEP", "ITEM"}:
-            tag_list = inpt.key if inpt.kind == "ITEM" else inpt.tag
-            inpts[inpt.collName] = tuple(
+    assert io in {'inputs', 'outputs'}
+    iodict = getattr(stepFunction, io)
+    ios = {coll: [] for coll in find_collNames(iodict)}
+    for io in iodict:
+        if io.kind in {"STEP", "ITEM"}:
+            tag_list = io.key if io.kind == "ITEM" else io.tag
+            ios[io.collName].append(tuple(
                 sympify(t.expr)
-                for (i, t) in enumerate(t for t in tag_list if not t.isRanged))
-        elif inpt.kind == "IF":
-            out_ref = inpt.refs[0]
+                for (i, t) in enumerate(t for t in tag_list if not t.isRanged)))
+        elif io.kind == "IF":
+            out_ref = io.refs[0]
             tag_list = out_ref.key if out_ref.kind == "ITEM" else out_ref.tag
-            inpts[out_ref.collName] = tuple(
+            ios[out_ref.collName].append(tuple(
                 Piecewise((sympify(t.expr),
-                           sympify(inpt.rawCond.replace('@', 'arg').replace('#', 'ctx'))))
-                for (i, t) in enumerate(t for t in tag_list if not t.isRanged))
-    return inpts
-
-# TODO: cache this
-def step_output_functions(stepFunction):
-    """
-    Given a StepFunction,
-    return sympification of its output item and step expressions.
-    """
-    # TODO: ranged function should be okay
-    outputs = {}
-    for output in stepFunction.outputs:
-        if output.kind in {"STEP", "ITEM"}:
-            tag_list = output.key if output.kind == "ITEM" else output.tag
-            outputs[output.collName] = tuple(
-                sympify(t.expr)
-                for (i, t) in enumerate(t for t in tag_list if not t.isRanged))
-        elif output.kind == "IF":
-            out_ref = output.refs[0]
-            tag_list = out_ref.key if out_ref.kind == "ITEM" else out_ref.tag
-            outputs[out_ref.collName] = tuple(
-                Piecewise((sympify(t.expr),
-                           sympify(output.rawCond.replace('@', 'arg').replace('#', 'ctx'))))
-                for (i, t) in enumerate(t for t in tag_list if not t.isRanged))
-    return outputs
+                           sympify(io.rawCond.replace('@', 'arg').replace('#', 'ctx'))))
+                for (i, t) in enumerate(t for t in tag_list if not t.isRanged)))
+    return ios
 
 
 def main():
@@ -113,7 +93,6 @@ def main():
                for output_item in graphData.initFunction.outputItems
                if output_item.kind == "ITEM"}
 
-
     def tuple_to_dict(coll, tag):
         # Convert a tag tuple of values to a tag dictionary to map keys -> values
         if coll in graphData.stepFunctions:
@@ -130,9 +109,6 @@ def main():
         else:
             return ()
 
-    print "Demand set:"
-    pprint([(c, tuple_to_dict(c, t)) for c, t in demand])
-
     def satisfy(stepOrItem, tag):
         # If it's a step, then add it to the run set and BFS satisfy on its products until demand is empty.
         # If it's an item, then add it to the compute set.
@@ -147,32 +123,41 @@ def main():
                 data = (graphData.stepFunctions[stepOrItem] if stepOrItem in graphData.stepFunctions
                         else graphData.initFunction if stepOrItem == graphData.initFunction.collName
                         else graphData.finalizeFunction)
-                outputs = step_output_functions(data)
-                for coll, tag_exprs in outputs.items():
-                    evaluated = tuple(expr.subs(tag) for expr in tag_exprs)
-                    que.append((coll, tuple_to_dict(coll, evaluated)))
+                outputs = step_io_functions(data, 'outputs')
+                for coll, tag_exprses in outputs.items():
+                    for tag_exprs in tag_exprses:
+                        evaluated = tuple(expr.subs(tag) for expr in tag_exprs)
+                        que.append((coll, tuple_to_dict(coll, evaluated)))
             else:
                 # It's an item, add to compute set and remove from demand set.
                 coll_tag = (stepOrItem, tag_tuple)
+                print coll_tag
                 compute.add(coll_tag)
                 demand.discard(coll_tag)
 
     satisfy(graphData.initFunction.collName, {})
     while len(demand) > 0:
         for item in demand:
-            coll, tag = item
-            candidates = find_blame_candidates(coll, tag, graphData)
-            if len(candidates) > 1:
-                print "Ambiguous resolution for {}@{}:".format(coll, tag)
-                pprint(candidates)
-                return
-            elif len(candidates) < 1:
-                print "Cannot satisfy demand for {}@{}".format(coll, tag)
-                return
-            else:
-                step, step_tag = candidates.items()[0]
-                satisfy(step, tuple_to_dict(step_tag))
-        break
+            break
+        coll, tag = item
+        candidates = find_blame_candidates(coll, tag, graphData)
+        if len(candidates) > 1:
+            print "Ambiguous resolution for {}@{}:".format(coll, tag)
+            pprint(candidates)
+            step = raw_input("Can you help? ")
+            step_tag = candidates[step]
+        elif len(candidates) < 1:
+            print "Cannot satisfy demand for {}@{}".format(coll, tag)
+            return
+        else:
+            step, step_tag = candidates.items()[0]
+        satisfy(step, step_tag)
+        # Add the inputs of the prescribed set to the demand set.
+        for coll, in_exprses in step_io_functions(graphData.stepFunctions[step], 'inputs').items():
+            for in_exprs in in_exprses:
+                evaluated = tuple(expr.subs(step_tag) for expr in in_exprs)
+                demand.add((coll, evaluated))
+
     pprint(("Compute", compute))
     pprint(("Run", run))
     # TODO: make a graph from these sets

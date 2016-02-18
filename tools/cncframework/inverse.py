@@ -1,6 +1,6 @@
 from itertools import chain
 
-from sympy import Symbol, solve, Piecewise
+from sympy import Symbol, solve, Piecewise, nan
 from sympy.core import sympify
 
 import cncframework.events.actions as actions
@@ -66,6 +66,25 @@ def find_step_inverses(stepFunction):
     return outputs
 
 
+def confirm_consistent(equations):
+    """Confirm that the set of piecewise equations has a consistent solution.
+    """
+    piecewise = {var: eq for var, eq in equations.items() if eq.is_Piecewise}
+    atoms = {var: eq.atoms() for var, eq in piecewise.items()}
+    dependents = {var: {dep_var for dep_var in equations
+                        if Symbol(dep_var) in atoms[var]} for var in piecewise}
+    resolutions = {}
+    for var in piecewise:
+        subs_dict = {dep_var: piecewise[dep_var].args[0][0]
+                     if dep_var in piecewise else equations[dep_var]
+                     for dep_var in dependents[var]}
+        resolutions[var] = equations[var].subs(subs_dict)
+        if resolutions[var] == nan:
+            return False
+    equations.update(resolutions)
+    return True
+
+
 def find_blame_candidates(coll_name, coll_tag, graph_data):
     """
     Given arg_blame in format coll@tag and graph_data from specfile, find the
@@ -92,8 +111,12 @@ def find_blame_candidates(coll_name, coll_tag, graph_data):
                         if inv != candidates[step][in_tag]:
                             # then the solution is inconsistent, reject
                             rejected_steps.add(step)
+                    elif inv == nan:
+                        rejected_steps.add(step)
                     else:
                         candidates[step][in_tag] = inv
+                if not confirm_consistent(candidates[step]):
+                    rejected_steps.add(step)
     for s in rejected_steps:
         del candidates[s]
     return candidates
