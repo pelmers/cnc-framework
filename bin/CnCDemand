@@ -7,5 +7,5 @@ ROOT=${UCNC_ROOT-"${XSTACK_ROOT?Missing UCNC_ROOT or XSTACK_ROOT environment var
 source $ROOT/tools/py/venv/bin/activate
 
 export BIN_NAME=$(basename "$0")
-python $ROOT/tools/step_demand.py "$@"
+python -m pdb $ROOT/tools/step_demand.py "$@"
 
