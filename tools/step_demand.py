@@ -191,9 +191,13 @@ def main():
                                                   ctx_values,
                                                   'inputs').items():
             for in_exprs in in_exprses:
-                for evaluated in _evaluate_tag_exprs(in_exprs, tuple_to_dict(s, t)):
+                for evaluated in _evaluate_tag_exprs(in_exprs, t):
                     evaluated_tuple = (coll, evaluated)
-                    if evaluated_tuple not in compute:
+                    # Check we haven't already computed it, and
+                    # make sure things like Piecewise() don't show up.
+                    if evaluated_tuple not in compute and all(
+                            len(e.atoms()) for e in evaluated):
+                        print "Adding {} as demanded by {}".format(evaluated_tuple, step_tag)
                         demand.add(evaluated_tuple)
 
     def satisfy(step, tag):
@@ -207,7 +211,6 @@ def main():
             step_tag = (step, tag_tuple)
             data = all_steps[step]
             run.add(step_tag)
-            expand_demand(step_tag)
             outputs = step_io_functions(data, ctx_values, 'outputs')
             for coll, tag_exprses in outputs.items():
                 for tag_exprs in tag_exprses:
@@ -242,6 +245,7 @@ def main():
             step, step_tag = candidates.items()[0]
         print "Satisfying {} with {}".format(item, (step, step_tag))
         satisfy(step, step_tag)
+        expand_demand((step, step_tag))
 
     pprint(("Compute", compute))
     pprint(("Run", run))
