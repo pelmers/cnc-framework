@@ -179,6 +179,8 @@ class DAG(object):
 
     def add_child(self, node, child):
         """Add some child to some node; create child node if it does not exist."""
+        if node not in self:
+            self.add_node(node)
         if child in self:
             self._nodes[node].add(child)
             if (node,child) not in self._eproperties:

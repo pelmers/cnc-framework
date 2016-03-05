@@ -12,7 +12,7 @@ from sympy import sympify, Piecewise
 from cncframework import graph, parser
 import cncframework.events.actions as actions
 from cncframework.events.eventgraph import EventGraph
-from cncframework.inverse import find_step_inverses, find_blame_candidates, find_collNames
+from cncframework.inverse import find_blame_candidates, find_collNames
 
 
 class RangedExpr(object):
@@ -29,7 +29,7 @@ class RangedExpr(object):
     def subs(self, var_dict):
         """Substitute var_dict into range.
 
-        Return of values within range.
+        Return iterable of values within range.
         """
         start = sympify(self.start).subs(var_dict)
         end = sympify(self.end).subs(var_dict)
@@ -141,6 +141,22 @@ def _evaluate_tag_exprs(tag_exprs, tag):
             yield tuple(e)
 
 
+_next_id = 0
+_id_cache = {}
+
+
+def coll_tag_to_id(coll, tag):
+    '''
+    Return an id for coll, tag.
+    '''
+    global _next_id
+    tup = (coll, tag)
+    if tup not in _id_cache:
+        _id_cache[tup] = _next_id
+        _next_id += 1
+    return _id_cache[tup]
+
+
 def main():
     bin_name = os.environ['BIN_NAME'] or "CnCDemand"
     arg_parser = ArgumentParser(prog=bin_name,
@@ -159,14 +175,13 @@ def main():
                     graphData.finalizeFunction.collName: graphData.finalizeFunction}
     all_steps.update(graphData.stepFunctions)
 
+    eventgraph = EventGraph([])
+    eventgraph.remove_node(0)
     # At the outset nothing has run, and nothing has been computed.
     run = set()
     compute = set()
-    # Demand set starts at the inputs of the finalize step.
-    demand = {(k, v) for k, exprs in
-              step_io_functions(graphData.finalizeFunction,
-                                ctx_values, 'inputs').items()
-              if k not in all_steps for v in exprs}
+    demand = set()
+
 
     def tuple_to_dict(coll, tag):
         # Convert a tag tuple of values to a tag dictionary to map keys -> values
@@ -177,8 +192,8 @@ def main():
 
     def dict_to_tuple(coll, tag):
         # Undo the other function
-        if coll in all_steps:
-            return tuple(tag[t] for t in all_steps[coll].tag)
+        if coll in graphData.stepFunctions:
+            return tuple(tag[t] for t in graphData.stepFunctions[coll].tag)
         elif coll in graphData.itemDeclarations:
             return tuple(tag[t] for t in graphData.itemDeclarations[coll].key)
         else:
@@ -187,6 +202,8 @@ def main():
     def expand_demand(step_tag):
         # Add the uncomputed inputs of the step to the demand set.
         s, t = step_tag
+        step_id = coll_tag_to_id(s, dict_to_tuple(s, t))
+        eventgraph.add_node(step_id)
         for coll, in_exprses in step_io_functions(all_steps[s],
                                                   ctx_values,
                                                   'inputs').items():
@@ -199,6 +216,7 @@ def main():
                             len(e.atoms()) for e in evaluated):
                         print "Adding {} as demanded by {}".format(evaluated_tuple, step_tag)
                         demand.add(evaluated_tuple)
+                    eventgraph.add_parent(step_id, coll_tag_to_id(coll, evaluated))
 
     def satisfy(step, tag):
         # Add the step to the run set and BFS on its products until supply is exhausted.
@@ -207,6 +225,8 @@ def main():
         while len(que) != 0 and len(demand) != 0:
             step, tag = que.popleft()
             tag_tuple = dict_to_tuple(step, tag)
+            step_id = coll_tag_to_id(step, tag_tuple)
+            eventgraph.add_node(step_id)
             # Mark that we must run the step, and satisfy its outputs.
             step_tag = (step, tag_tuple)
             data = all_steps[step]
@@ -217,13 +237,17 @@ def main():
                     for evaluated in _evaluate_tag_exprs(tag_exprs, tag):
                         coll_tag = (coll, evaluated)
                         if coll in all_steps:
+                            eventgraph.add_prescribe_edge(step_id, coll_tag_to_id(coll, evaluated))
                             if coll_tag not in run:
                                 que.append((coll, tuple_to_dict(coll, evaluated)))
                         else:
                             # It's an item, add to compute set and remove from demand set.
+                            eventgraph.add_child(step_id, coll_tag_to_id(coll, evaluated))
                             compute.add(coll_tag)
                             demand.discard(coll_tag)
 
+    # Demand set starts at the inputs of the finalize step.
+    expand_demand((graphData.finalizeFunction.collName, {}))
     satisfy(graphData.initFunction.collName, {})
 
     while len(demand) > 0:
@@ -249,8 +273,7 @@ def main():
 
     pprint(("Compute", compute))
     pprint(("Run", run))
-    # TODO: make a graph from these sets
-    # idea: fake event log?
+    print(eventgraph.dump_graph_dot())
 
 if __name__ == '__main__':
     main()
