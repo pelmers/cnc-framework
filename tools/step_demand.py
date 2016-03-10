@@ -199,6 +199,10 @@ def main():
         else:
             return ()
 
+    def has_atoms(evaluated_tuple):
+        # Return whether each element of tuple has some atoms.
+        return all(len(e.atoms()) for e in evaluated_tuple)
+
     def expand_demand(step_tag):
         # Add the uncomputed inputs of the step to the demand set.
         s, t = step_tag
@@ -212,8 +216,7 @@ def main():
                     evaluated_tuple = (coll, evaluated)
                     # Check we haven't already computed it, and
                     # make sure things like Piecewise() don't show up.
-                    if evaluated_tuple not in compute and all(
-                            len(e.atoms()) for e in evaluated):
+                    if evaluated_tuple not in compute and has_atoms(evaluated):
                         print "Adding {} as demanded by {}".format(evaluated_tuple, step_tag)
                         demand.add(evaluated_tuple)
                     eventgraph.add_parent(step_id, coll_tag_to_id(coll, evaluated))
@@ -230,21 +233,25 @@ def main():
             # Mark that we must run the step, and satisfy its outputs.
             step_tag = (step, tag_tuple)
             data = all_steps[step]
+            print "Running {}".format(step_tag)
             run.add(step_tag)
             outputs = step_io_functions(data, ctx_values, 'outputs')
             for coll, tag_exprses in outputs.items():
                 for tag_exprs in tag_exprses:
                     for evaluated in _evaluate_tag_exprs(tag_exprs, tag):
                         coll_tag = (coll, evaluated)
-                        if coll in all_steps:
-                            eventgraph.add_prescribe_edge(step_id, coll_tag_to_id(coll, evaluated))
-                            if coll_tag not in run:
-                                que.append((coll, tuple_to_dict(coll, evaluated)))
-                        else:
-                            # It's an item, add to compute set and remove from demand set.
-                            eventgraph.add_child(step_id, coll_tag_to_id(coll, evaluated))
-                            compute.add(coll_tag)
-                            demand.discard(coll_tag)
+                        if has_atoms(evaluated):
+                            if coll in all_steps:
+                                eventgraph.add_prescribe_edge(step_id, coll_tag_to_id(coll, evaluated))
+                                if coll_tag not in run:
+                                    print "Queued {}".format(coll_tag)
+                                    que.append((coll, tuple_to_dict(coll, evaluated)))
+                            else:
+                                # It's an item, add to compute set and remove from demand set.
+                                eventgraph.add_child(step_id, coll_tag_to_id(coll, evaluated))
+                                print "Computed {}".format(coll_tag)
+                                compute.add(coll_tag)
+                                demand.discard(coll_tag)
 
     # Demand set starts at the inputs of the finalize step.
     expand_demand((graphData.finalizeFunction.collName, {}))
