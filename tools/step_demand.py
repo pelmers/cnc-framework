@@ -111,6 +111,19 @@ def step_io_functions(stepFunction, ctx, io_type):
     return ios
 
 
+def unambiguous_collections(graphData):
+    """Return the collections that are output unambiguously and the step
+    inverse functions that put them.
+    """
+    # TODO: or collections put by multiple steps in disjoint ranges.
+    blames = {coll: [] for coll in graphData.itemDeclarations}
+    for step, func in graphData.stepFunctions.items():
+        for coll in find_collNames(func.outputs):
+            if coll in blames:
+                blames[coll].append(step)
+    return [c for c, v in blames.items() if len(v) == 1]
+
+
 def closest_match(haystacks, needle):
     '''
     From iterable of strings haystacks,
@@ -176,6 +189,7 @@ def main():
     all_steps.update(graphData.stepFunctions)
 
     eventgraph = EventGraph([])
+    # TODO: make the graph nicer? and add a program arg for it
     eventgraph.remove_node(0)
     # At the outset nothing has run, and nothing has been computed.
     run = set()

@@ -128,7 +128,10 @@ cncGet_{{input.collName}}(
         {%- for k in input.key %}_i{{loop.index0}}, {% endfor -%}
          _stepGuid, _edtSlot++, DB_DEFAULT_MODE, {{util.g_ctx_var()}});
 {#/* TODO: insert 'blame' calculation here with inputs collName, i0...ik
-     with conditions if it's piecewise */-#}
+     with conditions if it's piecewise.
+     can do if 1) only one step could do the put,
+     or 2) all steps' put conditions are disjoint (harder to check)
+     */-#}
 {%- else -%}
 ocrAddDependence(NULL_GUID, _stepGuid, _edtSlot++, DB_DEFAULT_MODE);
 {%- endif -%}
