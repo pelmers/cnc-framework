@@ -121,7 +121,7 @@ def unambiguous_collections(graphData):
         for coll in find_collNames(func.outputs):
             if coll in blames:
                 blames[coll].append(step)
-    return [c for c, v in blames.items() if len(v) == 1]
+    return {c: blames[c][0] for c in blames if len(blames[c]) == 1}
 
 
 def closest_match(haystacks, needle):
@@ -181,6 +181,8 @@ def main():
     graphAst = parser.cncGraphSpec.parseFile(args.specfile, parseAll=True)
     graphData = graph.CnCGraph("_", graphAst)
 
+    pprint(("Unambiguous collections", unambiguous_collections(graphData)))
+    return
     ctx_vars = parse_ctx_params('\n'.join(graphData.ctxParams))
     ctx_values = input_ctx(ctx_vars)
 
@@ -215,7 +217,7 @@ def main():
 
     def has_atoms(evaluated_tuple):
         # Return whether each element of tuple has some atoms.
-        return all(len(e.atoms()) for e in evaluated_tuple)
+        return all(e.atoms() for e in evaluated_tuple)
 
     def expand_demand(step_tag):
         # Add the uncomputed inputs of the step to the demand set.
@@ -294,7 +296,7 @@ def main():
 
     pprint(("Compute", compute))
     pprint(("Run", run))
-    print(eventgraph.dump_graph_dot())
+    #print(eventgraph.dump_graph_dot())
 
 if __name__ == '__main__':
     main()

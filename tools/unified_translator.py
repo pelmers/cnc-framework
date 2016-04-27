@@ -70,7 +70,7 @@ class UnifiedTranslator(object):
         platforms[self.args.platform]()
         # parse graph spec
         graphAst = parser.parseGraphFile(self.args.specfile)
-        self.g = graph.CnCGraph(self.graph_name, graphAst)
+        self.g = graph.CnCGraph(self.graph_name, graphAst, self.args.demand_driven)
         # parse tuning specs
         for tuningSpec in (self.args.tuning_spec or []):
             tuningAst = parser.parseTuningFile(tuningSpec)
@@ -87,6 +87,7 @@ class UnifiedTranslator(object):
         self.arg_parser.add_argument("--ocr-pure", action='store_true', default=False, help="use pure OCR implementation (no platform-specific code)")
         self.arg_parser.add_argument("-t", "--tuning-spec", action='append', help="CnC tuning spec file")
         self.arg_parser.add_argument("specfile", nargs='?', default="", help="CnC graph spec file")
+        self.arg_parser.add_argument("--demand-driven", action='store_true', default=False, help="whether to use demand-driven execution when possible")
         # parse the args
         self.args = self.arg_parser.parse_args()
         # check platform name

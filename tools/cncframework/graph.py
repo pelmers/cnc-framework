@@ -5,6 +5,9 @@ from string import strip
 from counter import Counter
 from ordereddict import OrderedDict
 
+from cncframework.parser import itemDecl, itemRef
+from cncframework.inverse import find_collNames, find_step_inverses
+
 
 def expandExpr(x, collID="0", numRanks="CNC_NUM_RANKS"):
     return x and (str(x).strip()
@@ -260,7 +263,7 @@ def getTuningFn(colls, collName, name, ranksExpr, default):
     return expandExpr(rawFn, collID=collID, numRanks=ranksExpr)
 
 class CnCGraph(object):
-    def __init__(self, name, g):
+    def __init__(self, name, g, demand_driven=False):
         verifyCollectionDecls("item", g.itemColls)
         steps = [ x.step for x in g.stepRels ]
         verifyCollectionDecls("step", steps)
@@ -288,6 +291,53 @@ class CnCGraph(object):
         self.allAttrNames = set()
         # context
         self.ctxParams = filter(bool, map(strip, g.ctx.splitlines())) if g.ctx else []
+
+        if demand_driven:
+            self.uc = self.unambiguous_collections()
+            demand_items = {
+                'demand_{}'.format(step): makeItemDecl(itemDecl.parseString(
+                    "[int demand_{}[]: {}];".format(step, ', '.join(self.stepFunctions[step].tag)))[0])
+                for step in {val[0] for val in self.uc.values()} if step in self.stepFunctions
+            }
+            # Add the demand collections as input to the corresponding step.
+            for item in demand_items:
+                step = item.lstrip('demand_')
+                stepFunc = self.stepFunctions[step]
+                iref = ItemRef(itemRef.parseString(
+                    "[demand_bit @ {}: {}]".format(item, ', '.join(stepFunc.tag))
+                )[0])
+                stepFunc.inputItems.insert(0, iref)
+                #stepFunc.inputs.insert(0, iref)
+            print "Constructed demand collections", demand_items
+            self.itemDeclarations.update(demand_items)
+            self.concreteItems.extend(demand_items.values())
+        else:
+            self.uc = {}
+
+    def gprint(self, *args):
+        print(args)
+
+    def unambiguous_collections(self):
+        """Return the collections that are output unambiguously and the step
+        inverse functions that put them.
+
+        """
+        # TODO: or collections put by multiple steps in disjoint ranges.
+        blames = {coll: [] for coll in self.itemDeclarations}
+        for step, func in self.stepFunctions.items():
+            for coll in find_collNames(func.outputs):
+                if coll in blames:
+                    blames[coll].append(step)
+        return {
+            c: (blames[c][0], find_step_inverses(self.stepFunctions[blames[c][0]])[c])
+                for c in blames if len(blames[c]) == 1
+        }
+
+    def format_demand_put(self, input_item):
+        step = self.stepFunctions[self.uc[input_item.collName][0]]
+        subs_dict = {"t{}".format(i+1): "_i{}".format(i) for i, _ in enumerate(input_item.key)}
+        args = chain.from_iterable([str(func.subs(subs_dict)) for func in func_map.values()] for func_map in self.uc[input_item.collName][1])
+        return "cncPut_demand_{}(_demand_item, {}, ctx);".format(step.collName, ', '.join(args))
 
     def hasTuning(self, name):
         return name in self.allAttrNames

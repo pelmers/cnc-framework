@@ -8,7 +8,7 @@ static inline int max_score(int x, int y) {
 /**
  * Step function defintion for "swStep"
  */
-void SmithWaterman_swStep(cncTag_t i, cncTag_t j, SeqData *data, int *above, int *left, SmithWatermanCtx *ctx) {
+void SmithWaterman_swStep(cncTag_t i, cncTag_t j, SeqData *data, int *above, int *left, int *demand_bit, SmithWatermanCtx *ctx) {
     int ii, jj;
     //assert(!above || !left || above[0] == left[0] && "Diagonal values should match");
 
