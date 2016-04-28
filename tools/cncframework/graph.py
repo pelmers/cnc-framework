@@ -145,7 +145,7 @@ class StepFunction(object):
         self.outputItems = []
         # Verify that tag bindings are unique
         if len(set(stepTag)) != len(stepTag):
-            exit("Repeated ID in tag for declaration of step `{0}`: {1}".format(\
+            exit("Repeated ID in tag for declaration of step `{0}`: {1}".format(
                     stepIO.step.collName, stepTag))
         # Helper
         def makeRefs(xs, itemsOutList):
@@ -299,6 +299,9 @@ class CnCGraph(object):
                     "[int demand_{}[]: {}];".format(step, ', '.join(self.stepFunctions[step].tag)))[0])
                 for step in {val[0] for val in self.uc.values()} if step in self.stepFunctions
             }
+            print "Constructed demand collections", demand_items.keys()
+            self.itemDeclarations.update(demand_items)
+            self.concreteItems.extend(demand_items.values())
             # Add the demand collections as input to the corresponding step.
             for item in demand_items:
                 step = item.lstrip('demand_')
@@ -306,11 +309,11 @@ class CnCGraph(object):
                 iref = ItemRef(itemRef.parseString(
                     "[demand_bit @ {}: {}]".format(item, ', '.join(stepFunc.tag))
                 )[0])
-                stepFunc.inputItems.insert(0, iref)
-                #stepFunc.inputs.insert(0, iref)
-            print "Constructed demand collections", demand_items
-            self.itemDeclarations.update(demand_items)
-            self.concreteItems.extend(demand_items.values())
+                stepFunc.inputItems.append(iref)
+                stepFunc.inputs.append(iref)
+                stepFunc.inputCountExpr += " + 1"
+                stepFunc.inputsDict[iref.binding] = iref
+                print "Set {} as input to {}".format(item, step)
         else:
             self.uc = {}
 
