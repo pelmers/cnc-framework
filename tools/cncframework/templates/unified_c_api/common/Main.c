@@ -21,7 +21,11 @@ int cncMain(int argc, char *argv[]) {
     {{g.name}}_launch(args, context);
 
     // Exit when the graph execution completes
-    CNC_SHUTDOWN_ON_FINISH(context);
+    {%- if g.uc -%}
+      CNC_SHUTDOWN_ON_FINISH(context);
+    {% else %}
+      CNC_SHUTDOWN_ON_FINALIZE(context);
+    {%- endif -%}
 
     return 0;
 }
